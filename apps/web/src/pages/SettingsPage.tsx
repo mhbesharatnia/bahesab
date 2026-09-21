@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  applyArvanConnectionImport,
   getArvanSyncConfig,
   runArvanSync,
   saveArvanSyncConfig,
@@ -71,8 +72,9 @@ export function SettingsPage() {
 
       <h3>همگام‌سازی آروان (Object Storage)</h3>
       <p className="muted">
-        یک فایل JSON مشترک روی باکت آروان؛ هر تغییر محلی بعد از چند ثانیه و هر ۱ دقیقه همگام می‌شود. کلیدها فقط
-        روی همین دستگاه می‌مانند و داخل پشتیبان دفترچه نیستند.
+        یک فایل JSON مشترک روی باکت آروان. دستگاه جدید با Import اتصال، اول داده را از آروان می‌گیرد (دفترچهٔ خالی
+        را روی کلود نمی‌نویسد). بعد از وصل شدن، هر تغییر محلی چند ثانیه بعد و هر ۱ دقیقه همگام می‌شود. کلیدها فقط
+        روی همین دستگاه می‌مانند.
       </p>
       <div className="card-form">
         <label className="check">
@@ -210,16 +212,31 @@ export function SettingsPage() {
                     setError('فایل اتصال آروان نامعتبر است')
                     return
                   }
-                  void saveArvan({
+                  void applyArvanConnectionImport({
                     endpoint: doc.endpoint,
                     region: doc.region,
                     bucket: doc.bucket,
                     objectKey: doc.objectKey,
                     accessKeyId: doc.accessKeyId,
                     secretAccessKey: doc.secretAccessKey,
-                    enabled: true,
-                    dirty: true,
-                  }).then(() => setMessage('اتصال آروان وارد و فعال شد — همگام‌سازی را بزنید'))
+                  })
+                    .then(() => runArvanSync())
+                    .then((r) => {
+                      if (r.ok) {
+                        setMessage(
+                          r.action === 'pulled'
+                            ? 'اتصال وارد شد و داده از آروان دریافت شد'
+                            : `اتصال وارد شد — ${r.message}`,
+                        )
+                      } else {
+                        setError(r.error)
+                        setMessage('اتصال ذخیره شد؛ همگام‌سازی ناموفق بود — دوباره «همگام‌سازی الآن» را بزنید')
+                      }
+                      return reload()
+                    })
+                    .catch((err) =>
+                      setError(err instanceof Error ? err.message : 'خطا در وارد کردن اتصال'),
+                    )
                 } catch {
                   setError('فایل JSON نامعتبر است')
                 }

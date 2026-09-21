@@ -2,7 +2,7 @@ import { areChangeMarksSuppressed, exportBackup, importBackupReplace } from './i
 import { arvanGetBackup, arvanPutBackup, hashBackupContent } from './arvan-s3'
 import { db, getSettings } from '../lib/db'
 import { nowISO } from '../lib/id'
-import type { ArvanSyncConfig, Settings } from '../lib/types'
+import type { ArvanSyncConfig, BackupDocumentV1, Settings } from '../lib/types'
 
 export type SyncResult =
   | { ok: true; action: 'noop' | 'pushed' | 'pulled' | 'pushed-new'; message: string }
@@ -26,6 +26,64 @@ function defaultArvan(): ArvanSyncConfig {
   }
 }
 
+/** True when ledger has no user accounts (fresh device / bootstrap only). */
+export function isSparseLedger(doc: BackupDocumentV1): boolean {
+  return doc.accounts.length === 0
+}
+
+/** First time this browser connects to this Arvan object (never successfully synced). */
+export function isFirstRemoteConnect(cfg: ArvanSyncConfig): boolean {
+  return !cfg.lastPushedContentHash && !cfg.lastRemoteExportedAt
+}
+
+/**
+ * Decide sync action without I/O.
+ * Priority: never overwrite a non-empty remote with an empty/first-connect local push.
+ */
+export function decideArvanSyncAction(input: {
+  cfg: ArvanSyncConfig
+  local: BackupDocumentV1
+  localHash: string
+  remote: BackupDocumentV1 | null
+  remoteHash: string | null
+}): 'noop' | 'push' | 'pull' | 'push-new' {
+  const { cfg, local, localHash, remote, remoteHash } = input
+  const localSparse = isSparseLedger(local)
+
+  if (!remote) {
+    if (localSparse) return 'noop'
+    return 'push-new'
+  }
+
+  const hashesEqual = remoteHash === localHash
+  if (hashesEqual) return 'noop'
+
+  const firstConnect = isFirstRemoteConnect(cfg)
+  const remoteSparse = isSparseLedger(remote)
+
+  // New device / empty local: always take remote if it has data
+  if (localSparse && !remoteSparse) return 'pull'
+
+  // First connect with both sides having data: prefer remote (joining an existing cloud ledger)
+  if (firstConnect && !remoteSparse) return 'pull'
+
+  // Local edits on a known connection: push (but never push sparse over non-sparse remote)
+  if (cfg.dirty || (cfg.lastPushedContentHash && localHash !== cfg.lastPushedContentHash)) {
+    if (localSparse && !remoteSparse) return 'pull'
+    return 'push'
+  }
+
+  // Remote moved ahead
+  if (!cfg.lastRemoteExportedAt || remote.exportedAt > cfg.lastRemoteExportedAt) {
+    return 'pull'
+  }
+
+  // Stale remote marker but content differs — pull to be safe on join
+  if (firstConnect) return 'pull'
+
+  return 'noop'
+}
+
 export async function getArvanSyncConfig(): Promise<ArvanSyncConfig> {
   const s = await getSettings()
   return { ...defaultArvan(), ...(s.arvanSync ?? {}) }
@@ -38,6 +96,30 @@ export async function saveArvanSyncConfig(
   const next: ArvanSyncConfig = { ...defaultArvan(), ...(s.arvanSync ?? {}), ...patch }
   await db.settings.put({ ...s, arvanSync: next, updatedAt: nowISO() })
   return next
+}
+
+/**
+ * Apply Arvan connection from another device: enable sync but do NOT mark dirty
+ * (first sync must pull cloud ledger, not push empty local).
+ */
+export async function applyArvanConnectionImport(input: {
+  endpoint: string
+  region: string
+  bucket: string
+  objectKey: string
+  accessKeyId: string
+  secretAccessKey: string
+}): Promise<ArvanSyncConfig> {
+  return saveArvanSyncConfig({
+    ...input,
+    enabled: true,
+    dirty: false,
+    localChangedAt: null,
+    lastSyncAt: null,
+    lastSyncError: null,
+    lastRemoteExportedAt: null,
+    lastPushedContentHash: null,
+  })
 }
 
 let marking = false
@@ -66,12 +148,6 @@ export async function markLocalDataChanged(): Promise<void> {
   }
 }
 
-/**
- * Last-write-wins sync:
- * - If local dirty → push current ledger to Arvan
- * - Else if remote newer (by exportedAt) → pull & replace local ledger (keep arvan credentials)
- * - Else noop
- */
 export async function runArvanSync(): Promise<SyncResult> {
   const settings = await getSettings()
   const cfg = { ...defaultArvan(), ...(settings.arvanSync ?? {}) }
@@ -81,63 +157,58 @@ export async function runArvanSync(): Promise<SyncResult> {
     const localDoc = await exportBackup()
     const localHash = await hashBackupContent(localDoc)
     const { doc: remote } = await arvanGetBackup(cfg)
+    const remoteHash = remote ? await hashBackupContent(remote) : null
 
-    if (!remote) {
+    const action = decideArvanSyncAction({
+      cfg,
+      local: localDoc,
+      localHash,
+      remote,
+      remoteHash,
+    })
+
+    if (action === 'noop') {
+      await persistSyncOk(settings, cfg, {
+        dirty: false,
+        lastRemoteExportedAt: remote?.exportedAt ?? cfg.lastRemoteExportedAt,
+        lastPushedContentHash: localHash,
+      })
+      return { ok: true, action: 'noop', message: 'همه‌چیز هم‌خوان است' }
+    }
+
+    if (action === 'push-new' || action === 'push') {
       await arvanPutBackup(cfg, localDoc)
       await persistSyncOk(settings, cfg, {
         dirty: false,
         lastRemoteExportedAt: localDoc.exportedAt,
         lastPushedContentHash: localHash,
       })
-      return { ok: true, action: 'pushed-new', message: 'فایل جدید روی آروان ساخته شد' }
+      return {
+        ok: true,
+        action: action === 'push-new' ? 'pushed-new' : 'pushed',
+        message:
+          action === 'push-new'
+            ? 'فایل جدید روی آروان ساخته شد'
+            : 'تغییرات محلی روی آروان نوشته شد',
+      }
     }
 
-    const remoteHash = await hashBackupContent(remote)
-    const remoteNewer =
-      !cfg.lastRemoteExportedAt || remote.exportedAt > (cfg.lastRemoteExportedAt ?? '')
-
-    if (cfg.dirty || localHash !== cfg.lastPushedContentHash) {
-      // Local changes win when dirty — push
-      if (remoteHash !== localHash) {
-        await arvanPutBackup(cfg, localDoc)
-        await persistSyncOk(settings, cfg, {
-          dirty: false,
-          lastRemoteExportedAt: localDoc.exportedAt,
-          lastPushedContentHash: localHash,
-        })
-        return { ok: true, action: 'pushed', message: 'تغییرات محلی روی آروان نوشته شد' }
-      }
-      await persistSyncOk(settings, cfg, {
-        dirty: false,
-        lastRemoteExportedAt: remote.exportedAt,
-        lastPushedContentHash: localHash,
-      })
-      return { ok: true, action: 'noop', message: 'قبلاً هم‌خوان بود' }
+    // pull
+    if (!remote) {
+      return { ok: true, action: 'noop', message: 'روی آروان فایلی نیست' }
     }
-
-    if (remoteHash !== localHash && remoteNewer) {
-      const imported = await importBackupReplace(remote)
-      if (!imported.ok) {
-        throw new Error(imported.errorFa)
-      }
-      // re-read settings after import (arvan preserved)
-      const after = await getSettings()
-      await persistSyncOk(after, { ...defaultArvan(), ...(after.arvanSync ?? {}) }, {
-        dirty: false,
-        lastRemoteExportedAt: remote.exportedAt,
-        lastPushedContentHash: remoteHash,
-      })
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('bahesab-ledger-pulled'))
-      }
-      return { ok: true, action: 'pulled', message: 'داده از آروان دریافت شد' }
-    }
-
-    await persistSyncOk(settings, cfg, {
+    const imported = await importBackupReplace(remote)
+    if (!imported.ok) throw new Error(imported.errorFa)
+    const after = await getSettings()
+    await persistSyncOk(after, { ...defaultArvan(), ...(after.arvanSync ?? {}) }, {
+      dirty: false,
       lastRemoteExportedAt: remote.exportedAt,
-      lastPushedContentHash: cfg.lastPushedContentHash ?? localHash,
+      lastPushedContentHash: remoteHash,
     })
-    return { ok: true, action: 'noop', message: 'همه‌چیز هم‌خوان است' }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('bahesab-ledger-pulled'))
+    }
+    return { ok: true, action: 'pulled', message: 'داده از آروان دریافت شد' }
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'خطای همگام‌سازی'
     const s = await getSettings()
