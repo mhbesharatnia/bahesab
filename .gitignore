@@ -1,0 +1,21 @@
+node_modules/
+dist/
+build/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
+apps/web/dist/
+
+# Local agent / Spec Kit scaffolding (kept on disk, not published)
+.cursor/
+.specify/
+docs/
+specs/
