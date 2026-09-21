@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { useDueBootstrap } from './hooks/useDueBootstrap'
 import { useArvanSync } from './hooks/useArvanSync'
@@ -30,7 +30,7 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || undefined}>
+    <HashRouter>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<HomePage />} />
