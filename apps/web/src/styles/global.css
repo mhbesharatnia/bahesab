@@ -45,6 +45,20 @@ body {
   color: var(--brand);
 }
 
+.topbar-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.refresh-btn {
+  flex-shrink: 0;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.7rem;
+}
+
 .tagline {
   margin: 0.25rem 0 1rem;
   color: var(--muted);
@@ -383,8 +397,17 @@ button.danger {
   background: var(--brand-soft);
 }
 
+.cal-cell.cal-negative:hover {
+  background: #d4573a;
+  color: #fff;
+}
+
 .cal-outside {
-  opacity: 0.4;
+  opacity: 0.45;
+}
+
+.cal-outside.cal-negative {
+  opacity: 0.85;
 }
 
 .cal-today {
@@ -395,6 +418,39 @@ button.danger {
 .cal-selected {
   background: var(--brand-soft);
   border-color: var(--brand);
+}
+
+.cal-cell.cal-negative {
+  background: #e76f51;
+  border-color: #c45c40;
+  color: #fff;
+}
+
+.cal-cell.cal-negative.cal-selected {
+  background: #c45c40;
+  border-color: #a33b2b;
+  box-shadow: inset 0 0 0 2px #fff6;
+}
+
+.cal-neg-amt {
+  font-size: 0.62rem;
+  line-height: 1.2;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-legend-neg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.35rem;
+  background: #e76f51;
+  color: #fff;
+  font-size: 0.8rem;
 }
 
 .cal-daynum {

@@ -111,3 +111,39 @@ export function buildCashProjection(input: {
 
   return points
 }
+
+/**
+ * Projected liquid cash on each date:
+ * startingCash (settled liquid as of today) + every pending on liquid accounts
+ * with dueDateISO <= that date — including overdue items before the visible range.
+ */
+export function projectedLiquidCashOnDates(input: {
+  startingCash: number
+  pending: ScheduledItem[]
+  liquidAccountIds: ReadonlySet<string>
+  dateISOs: readonly string[]
+}): Map<string, number> {
+  const { startingCash, pending, liquidAccountIds, dateISOs } = input
+  if (dateISOs.length === 0) return new Map()
+
+  const effects = pending
+    .filter((s) => s.status === 'pending' && liquidAccountIds.has(s.accountId))
+    .map((s) => ({
+      dueDateISO: s.dueDateISO,
+      effect: txnEffect(s.amountRial, s.direction),
+    }))
+    .sort((a, b) => a.dueDateISO.localeCompare(b.dueDateISO))
+
+  const sortedDates = [...new Set(dateISOs)].sort((a, b) => a.localeCompare(b))
+  const result = new Map<string, number>()
+  let cash = startingCash
+  let ei = 0
+  for (const dateISO of sortedDates) {
+    while (ei < effects.length && compareISO(effects[ei]!.dueDateISO, dateISO) <= 0) {
+      cash += effects[ei]!.effect
+      ei += 1
+    }
+    result.set(dateISO, cash)
+  }
+  return result
+}

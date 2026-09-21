@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useState } from 'react'
+import { hardRefreshApp } from '../../lib/hard-refresh'
 
 const links = [
   { to: '/', label: 'خانه', end: true },
@@ -15,11 +17,28 @@ const links = [
 ]
 
 export function AppShell() {
+  const [refreshing, setRefreshing] = useState(false)
+
   return (
     <div className="shell">
       <header className="topbar">
-        <h1>باحساب</h1>
-        <p className="tagline">دفترچهٔ حساب شخصی لوکال</p>
+        <div className="topbar-row">
+          <div>
+            <h1>باحساب</h1>
+            <p className="tagline">دفترچهٔ حساب شخصی لوکال</p>
+          </div>
+          <button
+            type="button"
+            className="ghost refresh-btn"
+            disabled={refreshing}
+            onClick={() => {
+              setRefreshing(true)
+              void hardRefreshApp()
+            }}
+          >
+            {refreshing ? 'در حال بروزرسانی…' : 'بروزرسانی'}
+          </button>
+        </div>
       </header>
       <nav className="nav">
         {links.map((l) => (

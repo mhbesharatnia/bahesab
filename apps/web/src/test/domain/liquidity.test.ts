@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCashProjection, buildLiquidityBuckets } from '../../domain/liquidity'
+import { buildCashProjection, buildLiquidityBuckets, projectedLiquidCashOnDates } from '../../domain/liquidity'
 import type { ScheduledItem } from '../../lib/types'
 
 const item = (
@@ -50,5 +50,22 @@ describe('liquidity', () => {
     expect(mar.cash).toBe(5700)
     expect(points[points.length - 1]!.dateISO).toBe('2026-03-15')
     expect(points[points.length - 1]!.cash).toBe(5700)
+  })
+
+  it('marks daily projected cash for calendar negatives', () => {
+    const pending = [
+      item({ id: '0', accountId: 'bank', amountRial: 2000, direction: 'out', dueDateISO: '2026-01-01' }),
+      item({ id: '1', accountId: 'bank', amountRial: 8000, direction: 'out', dueDateISO: '2026-02-10' }),
+    ]
+    // Overdue before visible range must still reduce cash
+    const map = projectedLiquidCashOnDates({
+      startingCash: 5000,
+      pending,
+      liquidAccountIds: new Set(['bank']),
+      dateISOs: ['2026-02-09', '2026-02-10', '2026-02-11'],
+    })
+    expect(map.get('2026-02-09')).toBe(3000) // 5000 - 2000
+    expect(map.get('2026-02-10')).toBe(-5000)
+    expect(map.get('2026-02-11')).toBe(-5000)
   })
 })
