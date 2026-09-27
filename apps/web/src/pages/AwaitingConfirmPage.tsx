@@ -8,12 +8,18 @@ import {
   type ConfirmOverrides,
 } from '../domain/due-processing'
 import { listInstallmentSeries } from '../domain/installments'
-import { listScheduled } from '../domain/scheduled'
+import { listScheduled, updateScheduledDueDate } from '../domain/scheduled'
 import { JalaliDateField } from '../components/forms/JalaliDateField'
 import { MoneyField } from '../components/forms/MoneyField'
-import { todayISO, toJalaliDisplay } from '../lib/dates'
+import {
+  addDaysISO,
+  endOfJalaliMonthISO,
+  todayISO,
+  toJalaliDisplay,
+} from '../lib/dates'
 import { getSettings } from '../lib/db'
 import { formatMoney } from '../lib/money'
+import { formatTransferPath } from '../lib/transfer-label'
 import type {
   Account,
   Category,
@@ -23,11 +29,12 @@ import type {
   ScheduledItem,
 } from '../lib/types'
 
-type ReviewMode = 'confirm' | 'skip'
+type ReviewMode = 'confirm' | 'skip' | 'postpone'
 
 type Draft = {
   itemId: string
   accountId: string
+  counterAccountId: string | null
   categoryId: string
   amountRial: number
   direction: Direction
@@ -35,16 +42,20 @@ type Draft = {
   note: string
 }
 
-function draftFromItem(item: ScheduledItem): Draft {
-  return {
+function draftFromItem(item: ScheduledItem, mode: ReviewMode): Draft {
+  const base = {
     itemId: item.id,
     accountId: item.accountId,
-    categoryId: item.categoryId,
+    counterAccountId: item.counterAccountId ?? null,
+    categoryId: item.categoryId ?? '',
     amountRial: item.amountRial,
     direction: item.direction,
-    dateISO: item.dueDateISO,
     note: item.note ?? '',
   }
+  if (mode === 'postpone') {
+    return { ...base, dateISO: addDaysISO(todayISO(), 1) }
+  }
+  return { ...base, dateISO: item.dueDateISO }
 }
 
 export function AwaitingConfirmPage() {
@@ -89,7 +100,7 @@ export function AwaitingConfirmPage() {
     setError(null)
     setMessage(null)
     setMode(nextMode)
-    setDraft(draftFromItem(item))
+    setDraft(draftFromItem(item, nextMode))
     setQueue(restQueue)
   }
 
@@ -113,11 +124,12 @@ export function AwaitingConfirmPage() {
     setError(null)
     const overrides: ConfirmOverrides = {
       accountId: draft.accountId,
-      categoryId: draft.categoryId,
+      categoryId: draft.counterAccountId ? null : draft.categoryId || null,
       amountRial: draft.amountRial,
-      direction: draft.direction,
+      direction: draft.counterAccountId ? 'out' : draft.direction,
       dateISO: draft.dateISO,
       note: draft.note.trim() || null,
+      counterAccountId: draft.counterAccountId,
     }
     try {
       await confirmItems([draft.itemId], { [draft.itemId]: overrides })
@@ -140,10 +152,21 @@ export function AwaitingConfirmPage() {
     }
   }
 
+  async function submitPostpone() {
+    if (!draft) return
+    setError(null)
+    try {
+      await updateScheduledDueDate(draft.itemId, draft.dateISO)
+      setMessage(`تعویق شد تا ${toJalaliDisplay(draft.dateISO)}`)
+      await advanceOrFinish()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'خطا')
+    }
+  }
+
   async function advanceOrFinish() {
     const [nextId, ...rest] = queue
     if (nextId && mode) {
-      // reload list so next item still exists; then open
       const all = await listScheduled('pending')
       const awaiting = listAwaitingConfirm(all, todayISO())
       setItems(awaiting)
@@ -152,7 +175,6 @@ export function AwaitingConfirmPage() {
         openReview(next, mode, rest)
         return
       }
-      // skipped missing ids
       if (rest.length > 0) {
         setQueue(rest)
         const fallback = awaiting.find((i) => rest.includes(i.id))
@@ -171,6 +193,13 @@ export function AwaitingConfirmPage() {
   }
 
   function originLine(item: ScheduledItem): string {
+    if (item.counterAccountId) {
+      const from = accounts.find((a) => a.id === item.accountId)?.name ?? 'مبدأ'
+      const to = accounts.find((a) => a.id === item.counterAccountId)?.name ?? 'مقصد'
+      const ser = item.seriesId ? seriesById.get(item.seriesId) : undefined
+      const base = `انتقال: ${formatTransferPath(from, to)}`
+      return ser ? `${base} · سری «${ser.name}»` : base
+    }
     if (item.seriesId) {
       const ser = seriesById.get(item.seriesId)
       const name = ser?.name ?? 'سری'
@@ -194,16 +223,30 @@ export function AwaitingConfirmPage() {
     })
   }
 
+  function titleForMode(m: ReviewMode): string {
+    if (m === 'confirm') return 'بررسی و ثبت تراکنش'
+    if (m === 'skip') return 'بررسی قبل از رد'
+    return 'تعویق سررسید'
+  }
+
+  function blurbForMode(m: ReviewMode): string {
+    if (m === 'confirm') return 'می‌توانید قبل از ثبت، همهٔ فیلدها را عوض کنید.'
+    if (m === 'skip') return 'این قلم رد می‌شود و تراکنشی ساخته نمی‌شود. جزئیات را چک کنید.'
+    return 'تاریخ جدید را بگذار؛ قلم از صف امروز خارج می‌شود و همان روز دوباره می‌آید.'
+  }
+
   if (draft && mode) {
+    const isPostpone = mode === 'postpone'
     return (
       <section>
-        <h2>{mode === 'confirm' ? 'بررسی و ثبت تراکنش' : 'بررسی قبل از رد'}</h2>
-        <p className="muted">
-          {mode === 'confirm'
-            ? 'می‌توانید قبل از ثبت، همهٔ فیلدها را عوض کنید.'
-            : 'این قلم رد می‌شود و تراکنشی ساخته نمی‌شود. جزئیات را چک کنید.'}
-        </p>
+        <div className="page-head">
+          <h2>{titleForMode(mode)}</h2>
+          <p className="sub">{blurbForMode(mode)}</p>
+        </div>
         {reviewing && <p className="muted">{originLine(reviewing)}</p>}
+        {reviewing && isPostpone && (
+          <p className="muted">سررسید فعلی: {toJalaliDisplay(reviewing.dueDateISO)}</p>
+        )}
         {queue.length > 0 && (
           <p className="muted">{queue.length} مورد دیگر در صف بررسی است.</p>
         )}
@@ -213,89 +256,196 @@ export function AwaitingConfirmPage() {
           onSubmit={(e) => {
             e.preventDefault()
             if (mode === 'confirm') void submitConfirm()
-            else void submitSkip()
+            else if (mode === 'skip') void submitSkip()
+            else void submitPostpone()
           }}
         >
-          <label className="field">
-            <span>حساب</span>
-            <select
-              value={draft.accountId}
-              onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
-              required
-            >
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>دسته</span>
-            <select
-              value={draft.categoryId}
-              onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}
-              required
-            >
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <MoneyField
-            amountRial={draft.amountRial}
-            unit={unit}
-            onChangeRial={(rial) => setDraft({ ...draft, amountRial: rial })}
-          />
-          <label className="field">
-            <span>جهت</span>
-            <select
-              value={draft.direction}
-              onChange={(e) => setDraft({ ...draft, direction: e.target.value as Direction })}
-            >
-              <option value="out">خروجی / تعهد</option>
-              <option value="in">ورودی / مطالبه</option>
-            </select>
-          </label>
-          <JalaliDateField
-            value={draft.dateISO}
-            onChange={(v) => setDraft({ ...draft, dateISO: v })}
-            label="تاریخ تراکنش"
-          />
-          <label className="field">
-            <span>توضیحات</span>
-            <input
-              value={draft.note}
-              onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-              placeholder="اختیاری"
-            />
-          </label>
+          {!isPostpone && (
+            <>
+              {draft.counterAccountId ? (
+                <>
+                  <label className="field">
+                    <span>از حساب</span>
+                    <select
+                      value={draft.accountId}
+                      onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+                      required
+                    >
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>به حساب</span>
+                    <select
+                      value={draft.counterAccountId}
+                      onChange={(e) => setDraft({ ...draft, counterAccountId: e.target.value })}
+                      required
+                    >
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="field">
+                    <span>حساب</span>
+                    <select
+                      value={draft.accountId}
+                      onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+                      required
+                    >
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>دسته</span>
+                    <select
+                      value={draft.categoryId}
+                      onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}
+                      required
+                    >
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>جهت</span>
+                    <select
+                      value={draft.direction}
+                      onChange={(e) =>
+                        setDraft({ ...draft, direction: e.target.value as Direction })
+                      }
+                    >
+                      <option value="out">خروجی / تعهد</option>
+                      <option value="in">ورودی / مطالبه</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              <MoneyField
+                amountRial={draft.amountRial}
+                unit={unit}
+                onChangeRial={(rial) => setDraft({ ...draft, amountRial: rial })}
+              />
+            </>
+          )}
+
+          {isPostpone ? (
+            <>
+              <p>
+                <strong>{formatMoney(draft.amountRial, unit)}</strong>
+                {draft.counterAccountId ? ' انتقال' : draft.direction === 'in' ? ' مطالبه' : ' تعهد'}
+              </p>
+              <JalaliDateField
+                value={draft.dateISO}
+                onChange={(v) => setDraft({ ...draft, dateISO: v })}
+                label="سررسید جدید"
+              />
+              <div className="row" style={{ flexWrap: 'wrap', gap: '0.35rem' }}>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setDraft({ ...draft, dateISO: addDaysISO(todayISO(), 1) })}
+                >
+                  فردا
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setDraft({ ...draft, dateISO: addDaysISO(todayISO(), 7) })}
+                >
+                  یک هفته بعد
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setDraft({ ...draft, dateISO: endOfJalaliMonthISO(todayISO()) })}
+                >
+                  پایان این ماه
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <JalaliDateField
+                value={draft.dateISO}
+                onChange={(v) => setDraft({ ...draft, dateISO: v })}
+                label="تاریخ تراکنش"
+              />
+              <label className="field">
+                <span>توضیحات</span>
+                <input
+                  value={draft.note}
+                  onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+                  placeholder="اختیاری"
+                />
+              </label>
+            </>
+          )}
 
           <div className="row" style={{ flexWrap: 'wrap', gap: '0.35rem' }}>
-            {mode === 'confirm' ? (
-              <button type="submit">ثبت به‌عنوان تراکنش</button>
-            ) : (
+            {mode === 'confirm' && <button type="submit">ثبت به‌عنوان تراکنش</button>}
+            {mode === 'skip' && (
               <button type="submit" className="danger">
                 تأیید رد (بدون تراکنش)
               </button>
             )}
+            {mode === 'postpone' && <button type="submit">تعویق به این تاریخ</button>}
+
             {mode === 'confirm' && (
-              <button
-                type="button"
-                className="danger"
-                onClick={() => {
-                  setMode('skip')
-                }}
-              >
-                رد به‌جای ثبت
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => {
+                    setDraft({ ...draft, dateISO: addDaysISO(todayISO(), 1) })
+                    setMode('postpone')
+                  }}
+                >
+                  بعداً می‌دهم
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => {
+                    setMode('skip')
+                  }}
+                >
+                  رد به‌جای ثبت
+                </button>
+              </>
             )}
             {mode === 'skip' && (
               <button
                 type="button"
                 onClick={() => {
+                  setMode('confirm')
+                }}
+              >
+                برگشت به ثبت
+              </button>
+            )}
+            {mode === 'postpone' && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  if (reviewing) setDraft(draftFromItem(reviewing, 'confirm'))
                   setMode('confirm')
                 }}
               >
@@ -321,14 +471,24 @@ export function AwaitingConfirmPage() {
 
   return (
     <section>
-      <h2>نیازمند تأیید</h2>
+      <div className="page-head">
+        <h2>نیازمند تأیید</h2>
+        <p className="sub">اقلام سررسیدشده در انتظار تأیید</p>
+      </div>
       <p className="muted">
-        با تأیید یا رد، فرم کامل تراکنش باز می‌شود تا قبل از تصمیم بتوانید جزئیات را ببینید و در حالت
-        تأیید ویرایش کنید.
+        تأیید، رد، یا تعویق («بعداً می‌دهم»). تعویق فقط سررسید را جلو می‌برد و تراکنش نمی‌سازد.
       </p>
-      <div className="row">
+      <div className="row" style={{ flexWrap: 'wrap', gap: '0.35rem' }}>
         <button type="button" disabled={selected.size === 0} onClick={() => startBulk('confirm')}>
           تأیید انتخاب‌شده‌ها
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          disabled={selected.size === 0}
+          onClick={() => startBulk('postpone')}
+        >
+          تعویق انتخاب‌شده‌ها
         </button>
         <button
           type="button"
@@ -357,15 +517,23 @@ export function AwaitingConfirmPage() {
                   />
                   <span>
                     <strong>{formatMoney(s.amountRial, unit)}</strong> —{' '}
-                    {s.direction === 'in' ? 'مطالبه' : 'تعهد'} — {toJalaliDisplay(s.dueDateISO)}
+                    {s.counterAccountId
+                      ? 'انتقال'
+                      : s.direction === 'in'
+                        ? 'مطالبه'
+                        : 'تعهد'}{' '}
+                    — {toJalaliDisplay(s.dueDateISO)}
                     <div className="muted">
                       {acc?.name ?? 'حساب'} · {originLine(s)}
                     </div>
                   </span>
                 </label>
-                <div className="row">
+                <div className="row" style={{ flexWrap: 'wrap', gap: '0.25rem' }}>
                   <button type="button" className="ghost" onClick={() => openReview(s, 'confirm')}>
                     تأیید
+                  </button>
+                  <button type="button" className="ghost" onClick={() => openReview(s, 'postpone')}>
+                    بعداً
                   </button>
                   <button type="button" className="ghost" onClick={() => openReview(s, 'skip')}>
                     رد

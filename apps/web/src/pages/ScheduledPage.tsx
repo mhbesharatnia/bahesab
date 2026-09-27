@@ -76,7 +76,7 @@ export function ScheduledPage() {
   function beginEdit(s: ScheduledItem) {
     setEditId(s.id)
     setAccountId(s.accountId)
-    setCategoryId(s.categoryId)
+    setCategoryId(s.categoryId ?? '')
     setAmount(s.amountRial)
     setDirection(s.direction)
     setDueDateISO(s.dueDateISO)
@@ -94,7 +94,10 @@ export function ScheduledPage() {
 
   return (
     <section>
-      <h2>تعهدات و مطالبات</h2>
+      <div className="page-head">
+        <h2>تعهدات و مطالبات</h2>
+        <p className="sub">ثبت اقلام زمان‌دار و سررسیدها</p>
+      </div>
       <form
         className="card-form"
         onSubmit={(e) => {

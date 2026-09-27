@@ -27,6 +27,15 @@ export class BahesabDB extends Dexie {
       installmentSeries: 'id, accountId',
       settings: 'id',
     })
+    // transferGroupId / counterAccountId are plain fields; index for paired deletes
+    this.version(2).stores({
+      accounts: 'id, name, type, archived',
+      categories: 'id, name, kind, systemKey, archived',
+      transactions: 'id, accountId, categoryId, dateISO, kind, scheduledItemId, transferGroupId',
+      scheduledItems: 'id, accountId, categoryId, dueDateISO, status, seriesId, counterAccountId',
+      installmentSeries: 'id, accountId',
+      settings: 'id',
+    })
   }
 }
 
@@ -55,6 +64,8 @@ export async function ensureBootstrap(): Promise<void> {
       createdAt: t,
       updatedAt: t,
     })
+  } else if (!opening.name?.trim()) {
+    await db.categories.update(opening.id, { name: 'افتتاحیه', updatedAt: nowISO() })
   }
 }
 

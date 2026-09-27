@@ -2,10 +2,17 @@ import { db } from '../lib/db'
 import { newId, nowISO } from '../lib/id'
 import type { Category, CategoryKind } from '../lib/types'
 
-export async function listCategories(includeArchived = false): Promise<Category[]> {
+export async function listCategories(
+  includeArchived = false,
+  opts?: { includeOpening?: boolean },
+): Promise<Category[]> {
   const all = await db.categories.toArray()
   return all
-    .filter((c) => (includeArchived || !c.archived) && c.systemKey !== 'opening')
+    .filter((c) => {
+      if (!includeArchived && c.archived) return false
+      if (!opts?.includeOpening && c.systemKey === 'opening') return false
+      return true
+    })
     .sort((a, b) => a.name.localeCompare(b.name, 'fa'))
 }
 

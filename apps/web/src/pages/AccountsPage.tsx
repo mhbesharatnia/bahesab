@@ -88,7 +88,10 @@ export function AccountsPage() {
 
   return (
     <section>
-      <h2>حساب‌ها</h2>
+      <div className="page-head">
+        <h2>حساب‌ها</h2>
+        <p className="sub">مدیریت حساب‌ها و تراز افتتاحیه</p>
+      </div>
       <form className="card-form" onSubmit={onSubmit}>
         <h3>{editId ? 'ویرایش افتتاحیه' : 'حساب جدید'}</h3>
         {!editId && (
@@ -135,35 +138,42 @@ export function AccountsPage() {
         {error && <p className="error">{error}</p>}
       </form>
 
-      <ul className="list">
-        {accounts.map((a) => (
-          <li key={a.id}>
-            <div>
-              <strong>{a.name}</strong>
-              <span className="badge">{typeLabel[a.type]}</span>
-            </div>
-            <div className="row">
-              <button type="button" className="ghost" onClick={() => void startEdit(a.id)}>
-                افتتاحیه
-              </button>
-              <button
-                type="button"
-                className="danger"
-                onClick={() =>
-                  void deleteAccount(a.id)
-                    .then(reload)
-                    .catch((err) => setError(err instanceof Error ? err.message : 'خطا'))
-                }
-              >
-                حذف
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <div className="card">
+        <div className="card-head">
+          <h3>فهرست حساب‌ها</h3>
+        </div>
+        <div className="card-body">
+          <ul className="list" style={{ marginBottom: 0 }}>
+            {accounts.map((a) => (
+              <li key={a.id}>
+                <div>
+                  <strong>{a.name}</strong>
+                  <span className="badge">{typeLabel[a.type]}</span>
+                </div>
+                <div className="row">
+                  <button type="button" className="ghost sm" onClick={() => void startEdit(a.id)}>
+                    افتتاحیه
+                  </button>
+                  <button
+                    type="button"
+                    className="danger sm"
+                    onClick={() =>
+                      void deleteAccount(a.id)
+                        .then(reload)
+                        .catch((err) => setError(err instanceof Error ? err.message : 'خطا'))
+                    }
+                  >
+                    حذف
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
       <p className="muted">
-        صندوق‌ها طرف‌حساب قرض‌اند؛ موجودی صندوق مال تو نیست. قرض گرفتن: به حساب بانکی‌ات ورودی بزن و روی صندوق همان مبلغ را
-        به‌صورت بدهی (تراز منفی یا تراکنش خروجی) ثبت کن. بازپرداخت: از بانک خروجی + روی صندوق ورودی (کاهش بدهی).
+        بازپرداخت: از بانک خروجی + روی صندوق ورودی (کاهش بدهی). یا از «تراکنش‌ها / اقساط» نوع{' '}
+        <strong>انتقال بین حساب‌ها</strong> را بزن تا هر دو طرف یکجا ثبت شود.
       </p>
       <p className="muted">
         نمونه بدهی به علی: حساب اشخاص با تراز {formatMoney(-5_000_000, unit)}. نمونه قرض از صندوق: نوع «صندوق» + تراز منفی

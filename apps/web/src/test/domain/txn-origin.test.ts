@@ -10,6 +10,7 @@ const baseTxn = (partial: Partial<Transaction> & Pick<Transaction, 'id' | 'kind'
   dateISO: '2026-01-01',
   note: null,
   scheduledItemId: null,
+  transferGroupId: null,
   createdAt: '',
   updatedAt: '',
   ...partial,
@@ -37,6 +38,7 @@ describe('resolveTxnOrigin', () => {
       seriesId: null,
       seriesIndex: null,
       note: 'اجاره',
+      counterAccountId: null,
       createdAt: '',
       updatedAt: '',
     }
@@ -62,6 +64,7 @@ describe('resolveTxnOrigin', () => {
       startDateISO: '2026-01-01',
       count: 12,
       interval: 'monthly',
+      counterAccountId: null,
       createdAt: '',
     }
     const item: ScheduledItem = {
@@ -75,6 +78,7 @@ describe('resolveTxnOrigin', () => {
       seriesId: 'ser',
       seriesIndex: 3,
       note: null,
+      counterAccountId: null,
       createdAt: '',
       updatedAt: '',
     }

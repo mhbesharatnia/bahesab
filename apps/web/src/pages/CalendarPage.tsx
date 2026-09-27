@@ -142,78 +142,83 @@ export function CalendarPage() {
 
   return (
     <section>
-      <h2>تقویم</h2>
+      <div className="page-head">
+        <h2>تقویم</h2>
+        <p className="sub">نمای ماهانهٔ جریان نقد و سررسیدها</p>
+      </div>
       <p className="muted">
         تراکنش‌ها و اقلام pending. روزهایی که موجودی نقدی با احتساب pending منفی می‌شود قرمزند.
       </p>
 
-      <div className="cal-nav">
-        <button type="button" className="ghost" onClick={() => shiftMonth(-1)} aria-label="ماه قبل">
-          › ماه قبل
-        </button>
-        <strong>
-          {JALALI_MONTH_NAMES[viewMonth - 1]} {viewYear}
-        </strong>
-        <button type="button" className="ghost" onClick={() => shiftMonth(1)} aria-label="ماه بعد">
-          ماه بعد ‹
-        </button>
-        <button type="button" className="ghost" onClick={goToday}>
-          امروز
-        </button>
-      </div>
+      <div className="card">
+        <div className="card-body">
+          <div className="cal-nav">
+            <button type="button" className="ghost" onClick={() => shiftMonth(-1)} aria-label="ماه قبل">
+              ‹ ماه قبل
+            </button>
+            <strong>
+              {JALALI_MONTH_NAMES[viewMonth - 1]} {viewYear}
+            </strong>
+            <button type="button" className="ghost" onClick={() => shiftMonth(1)} aria-label="ماه بعد">
+              ماه بعد ›
+            </button>
+            <button type="button" className="ghost" onClick={goToday}>
+              امروز
+            </button>
+          </div>
 
-      <div className="totals-grid" style={{ marginBottom: '0.75rem' }}>
-        <div>
-          <span className="muted">ورودی ماه</span>
-          <strong className="flow-in-text">{formatMoney(monthInflow, unit)}</strong>
-        </div>
-        <div>
-          <span className="muted">خروجی ماه</span>
-          <strong className="flow-out-text">{formatMoney(monthOutflow, unit)}</strong>
-        </div>
-        <div>
-          <span className="muted">نقد فعلی</span>
-          <strong>{formatMoney(startingCash, unit)}</strong>
-        </div>
-        <div>
-          <span className="muted">روز منفی در این ماه</span>
-          <strong className={negativeDayCount > 0 ? 'flow-out-text' : undefined}>
-            {negativeDayCount}
-          </strong>
-        </div>
-      </div>
+          <div className="kpis" style={{ marginBottom: 12 }}>
+            <div className="kpi">
+              <span className="label">ورودی ماه</span>
+              <span className="value flow-in-text">{formatMoney(monthInflow, unit)}</span>
+            </div>
+            <div className="kpi">
+              <span className="label">خروجی ماه</span>
+              <span className="value flow-out-text">{formatMoney(monthOutflow, unit)}</span>
+            </div>
+            <div className="kpi">
+              <span className="label">نقد فعلی</span>
+              <span className="value">{formatMoney(startingCash, unit)}</span>
+            </div>
+            <div className="kpi">
+              <span className="label">روز منفی</span>
+              <span className={`value ${negativeDayCount > 0 ? 'flow-out-text' : ''}`}>
+                {negativeDayCount}
+              </span>
+            </div>
+          </div>
 
-      <div className="cal-weekdays">
-        {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((d) => (
-          <span key={d}>{d}</span>
-        ))}
-      </div>
-      <div className="cal-grid">
-        {cells.map((c, i) => {
-          const dayEvents = byDate.get(c.dateISO) ?? []
-          const hasIn = dayEvents.some((e) => e.direction === 'in')
-          const hasOut = dayEvents.some((e) => e.direction === 'out')
-          const hasPending = dayEvents.some((e) => e.statusLabel === 'در انتظار')
-          const selected = c.dateISO === selectedISO
-          const isToday = c.dateISO === today
-          const cash = cashByDate.get(c.dateISO) ?? startingCash
-          const negative = cash < 0
-          return (
-            <button
-              key={`${c.dateISO}-${i}`}
-              type="button"
-              className={[
-                'cal-cell',
-                c.inMonth ? '' : 'cal-outside',
-                selected ? 'cal-selected' : '',
-                isToday ? 'cal-today' : '',
-                negative ? 'cal-negative' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              onClick={() => setSelectedISO(c.dateISO)}
-              title={`موجودی تقریبی: ${formatMoney(cash, unit)}`}
-            >
+          <div className="cal-weekdays">
+            {['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'].map((d) => (
+              <span key={d}>{d}</span>
+            ))}
+          </div>
+          <div className="cal-grid">
+            {cells.map((c, i) => {
+              const dayEvents = byDate.get(c.dateISO) ?? []
+              const hasIn = dayEvents.some((e) => e.direction === 'in')
+              const hasOut = dayEvents.some((e) => e.direction === 'out')
+              const hasPending = dayEvents.some((e) => e.statusLabel === 'در انتظار')
+              const selected = c.dateISO === selectedISO
+              const isToday = c.dateISO === today
+              const cash = cashByDate.get(c.dateISO) ?? startingCash
+              const negative = cash < 0
+              return (
+                <button
+                  key={`${c.dateISO}-${i}`}
+                  type="button"
+                  className={[
+                    'cal-cell',
+                    c.inMonth ? '' : 'cal-outside',
+                    selected ? 'cal-selected' : '',
+                    isToday ? 'cal-today' : '',
+                    negative ? 'cal-negative' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={() => setSelectedISO(c.dateISO)}
+                  title={`موجودی تقریبی: ${formatMoney(cash, unit)}`}
+                >
               <span className="cal-daynum">{c.day}</span>
               {negative && (
                 <span className="cal-neg-amt">{formatMoney(cash, unit)}</span>
@@ -243,8 +248,14 @@ export function CalendarPage() {
         </span>
         <span className="cal-legend-neg">موجودی منفی (نقد + pending)</span>
       </div>
+        </div>
+      </div>
 
-      <h3>رویدادهای {toJalaliDisplay(selectedISO)}</h3>
+      <div className="card">
+        <div className="card-head">
+          <h3>رویدادهای {toJalaliDisplay(selectedISO)}</h3>
+        </div>
+        <div className="card-body">
       {selectedCash !== undefined && (
         <p className={selectedCash < 0 ? 'flow-out-text' : 'muted'}>
           موجودی نقدی تقریبی تا این روز (با pending): {formatMoney(selectedCash, unit)}
@@ -253,7 +264,7 @@ export function CalendarPage() {
       {selectedEvents.length === 0 ? (
         <p className="muted">رویدادی در این روز نیست.</p>
       ) : (
-        <ul className="list">
+        <ul className="list" style={{ marginBottom: 0 }}>
           {selectedEvents.map((e) => {
             const isIn = e.direction === 'in'
             return (
@@ -272,6 +283,8 @@ export function CalendarPage() {
           })}
         </ul>
       )}
+        </div>
+      </div>
     </section>
   )
 }

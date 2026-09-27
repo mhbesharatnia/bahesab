@@ -34,13 +34,23 @@ export function forecastAsOf(
 
   const settled = settledBalancesAsOf(todayISO, txns)
   const pendingEffect = new Map<string, number>()
+
+  function addPend(accountId: string, delta: number) {
+    if (!delta) return
+    pendingEffect.set(accountId, (pendingEffect.get(accountId) ?? 0) + delta)
+  }
+
   for (const s of pending) {
     if (s.status !== 'pending') continue
     if (compareISO(s.dueDateISO, reportDateISO) > 0) continue
-    pendingEffect.set(
-      s.accountId,
-      (pendingEffect.get(s.accountId) ?? 0) + txnEffect(s.amountRial, s.direction),
-    )
+    const counter = s.counterAccountId ?? null
+    if (counter) {
+      // Transfer: out from accountId, in to counterAccountId
+      addPend(s.accountId, txnEffect(s.amountRial, 'out'))
+      addPend(counter, txnEffect(s.amountRial, 'in'))
+    } else {
+      addPend(s.accountId, txnEffect(s.amountRial, s.direction))
+    }
   }
   return { mode: 'forecast', settled, pendingEffect }
 }

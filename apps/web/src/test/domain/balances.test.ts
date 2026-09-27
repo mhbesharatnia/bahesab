@@ -9,6 +9,7 @@ const txn = (
   kind: 'normal',
   note: null,
   scheduledItemId: null,
+  transferGroupId: null,
   createdAt: '',
   updatedAt: '',
   ...partial,
@@ -40,6 +41,7 @@ describe('balances', () => {
         seriesId: null,
         seriesIndex: null,
         note: null,
+        counterAccountId: null,
         createdAt: '',
         updatedAt: '',
       },
@@ -54,6 +56,7 @@ describe('balances', () => {
         seriesId: null,
         seriesIndex: null,
         note: null,
+        counterAccountId: null,
         createdAt: '',
         updatedAt: '',
       },
@@ -65,5 +68,39 @@ describe('balances', () => {
     const future = forecastAsOf('2026-02-01', '2026-01-20', txns, pending)
     expect(future.mode).toBe('forecast')
     expect(future.pendingEffect.get('a')).toBe(-100)
+  })
+
+  it('forecast applies both legs of a pending transfer', () => {
+    const txns = [
+      txn({ id: '1', accountId: 'bank', amountRial: 100_000, direction: 'in', dateISO: '2026-01-01' }),
+      txn({
+        id: '2',
+        accountId: 'fund',
+        amountRial: 80_000,
+        direction: 'out',
+        dateISO: '2026-01-01',
+      }),
+    ]
+    const pending: ScheduledItem[] = [
+      {
+        id: 's1',
+        accountId: 'bank',
+        categoryId: null,
+        amountRial: 20_000,
+        direction: 'out',
+        dueDateISO: '2026-02-01',
+        status: 'pending',
+        seriesId: null,
+        seriesIndex: null,
+        note: null,
+        counterAccountId: 'fund',
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]
+    const r = forecastAsOf('2026-03-01', '2026-01-15', txns, pending)
+    expect(r.mode).toBe('forecast')
+    expect(r.pendingEffect.get('bank')).toBe(-20_000)
+    expect(r.pendingEffect.get('fund')).toBe(20_000)
   })
 })

@@ -11,6 +11,7 @@ const item = (
   seriesId: null,
   seriesIndex: null,
   note: null,
+  counterAccountId: null,
   createdAt: '',
   updatedAt: '',
   ...partial,

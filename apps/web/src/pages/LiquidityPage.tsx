@@ -16,6 +16,7 @@ import { JalaliDateField } from '../components/forms/JalaliDateField'
 import { getSettings } from '../lib/db'
 import { compareISO, endOfJalaliMonthAheadISO, endOfJalaliYearISO, todayISO, toJalaliDisplay } from '../lib/dates'
 import { formatMoney } from '../lib/money'
+import { formatTransferPath } from '../lib/transfer-label'
 import type {
   Account,
   Category,
@@ -113,6 +114,25 @@ export function LiquidityPage() {
   }
 
   function typeBadge(item: ScheduledItem): { label: string; detail: string | null } {
+    if (item.counterAccountId) {
+      const from = accounts.find((a) => a.id === item.accountId)?.name ?? '？'
+      const to = accounts.find((a) => a.id === item.counterAccountId)?.name ?? '？'
+      const ser = item.seriesId ? seriesById.get(item.seriesId) : undefined
+      const idx =
+        item.seriesIndex != null && ser
+          ? `قسط ${item.seriesIndex} از ${ser.count}`
+          : null
+      return {
+        label: 'انتقال',
+        detail: [
+          formatTransferPath(from, to),
+          ser ? `«${ser.name}»` : null,
+          idx,
+        ]
+          .filter(Boolean)
+          .join(' — '),
+      }
+    }
     if (item.seriesId) {
       const ser = seriesById.get(item.seriesId)
       const name = ser?.name ?? 'سری'
@@ -135,7 +155,10 @@ export function LiquidityPage() {
 
   return (
     <section>
-      <h2>نقدینگی آینده</h2>
+      <div className="page-head">
+        <h2>نقدینگی آینده</h2>
+        <p className="sub">پیش‌بینی جریان نقد بر اساس pending</p>
+      </div>
       <div className="totals-card">
         <h3>موجودی نقدی فعلی</h3>
         <strong className="total-value">{formatMoney(totalBalance, unit)}</strong>
@@ -170,7 +193,9 @@ export function LiquidityPage() {
       {cashPoints.length === 0 ? (
         <p className="muted">بازه نامعتبر است.</p>
       ) : (
-        <CashProjectionChart points={cashPoints} unit={unit} />
+        <div className="chart-wrap">
+          <CashProjectionChart points={cashPoints} unit={unit} />
+        </div>
       )}
 
       <h3>ورودی / خروجی pending</h3>
@@ -178,7 +203,9 @@ export function LiquidityPage() {
       {buckets.length === 0 ? (
         <p>قلم pending در این بازه نیست.</p>
       ) : (
-        <LiquidityChart buckets={buckets} unit={unit} />
+        <div className="chart-wrap">
+          <LiquidityChart buckets={buckets} unit={unit} />
+        </div>
       )}
 
       <h3>لیست ورودی و خروجی ({flowRows.length})</h3>
@@ -198,11 +225,20 @@ export function LiquidityPage() {
                   <strong>{formatMoney(s.amountRial, unit)}</strong>{' '}
                   {isIn ? 'ورودی' : 'خروجی'}
                   <span className="badge">{label}</span>
-                  <span className="badge">{isIn ? 'مطالبه' : 'تعهد'}</span>
-                  {!liquidIds.has(s.accountId) && <span className="badge forecast">غیرنقدی</span>}
+                  {s.counterAccountId ? (
+                    <span className="badge forecast">انتقال</span>
+                  ) : (
+                    <span className="badge">{isIn ? 'مطالبه' : 'تعهد'}</span>
+                  )}
+                  {!liquidIds.has(s.accountId) && !s.counterAccountId && (
+                    <span className="badge forecast">غیرنقدی</span>
+                  )}
+                  {s.counterAccountId && liquidIds.has(s.accountId) && (
+                    <span className="badge">نقدی</span>
+                  )}
                   <div className="muted">
                     {toJalaliDisplay(s.dueDateISO)}
-                    {acc ? ` · ${acc.name}` : ''}
+                    {acc && !s.counterAccountId ? ` · ${acc.name}` : ''}
                     {cat ? ` · ${cat.name}` : ''}
                     {detail ? ` · ${detail}` : ''}
                     {s.note && s.note !== detail ? ` · ${s.note}` : ''}

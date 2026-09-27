@@ -117,13 +117,13 @@ export function JalaliDateField({ value, onChange, label = 'تاریخ شمسی'
         <div className="jalali-picker" id={listId} role="dialog" aria-label="تقویم شمسی">
           <div className="jalali-picker-nav">
             <button type="button" className="ghost" onClick={() => shiftMonth(-1)} aria-label="ماه قبل">
-              ›
+              ‹
             </button>
             <strong>
               {JALALI_MONTH_NAMES[viewMonth - 1]} {viewYear}
             </strong>
             <button type="button" className="ghost" onClick={() => shiftMonth(1)} aria-label="ماه بعد">
-              ‹
+              ›
             </button>
           </div>
           <div className="jalali-picker-weekdays">

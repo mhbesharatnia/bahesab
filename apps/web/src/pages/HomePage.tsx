@@ -92,73 +92,105 @@ export function HomePage() {
 
   return (
     <section>
-      <h2>خانه</h2>
+      <div className="page-head">
+        <h2>خانه</h2>
+        <p className="sub">خلاصهٔ موجودی و نمای نقدینگی</p>
+      </div>
 
-      <div className="totals-card" aria-label="خلاصه وضعیت">
-        <h3>موجودی نقدی</h3>
-        <strong className="total-value">{formatMoney(liquidTotal, unit)}</strong>
-        <p className="muted">فقط بانک و نقد — بدهی صندوق اینجا کم نمی‌شود</p>
-        <div className="totals-grid" style={{ marginTop: '0.75rem' }}>
-          <div>
-            <span className="muted">مطالبات</span>
-            <strong>{formatMoney(receivables, unit)}</strong>
-          </div>
-          <div>
-            <span className="muted">بدهی‌ها (پرداخت‌نشده)</span>
-            <strong className="forecast">{formatMoney(payables, unit)}</strong>
-          </div>
-          <div>
-            <span className="muted">خالص = نقد + طلب − بدهی</span>
-            <strong>{formatMoney(liquidTotal + receivables - payables, unit)}</strong>
+      <div className="kpis" aria-label="خلاصه وضعیت">
+        <div className="kpi">
+          <span className="label">موجودی نقدی</span>
+          <span className="value">{formatMoney(liquidTotal, unit)}</span>
+          <span className="muted">فقط بانک و نقد</span>
+        </div>
+        <div className="kpi">
+          <span className="label">مطالبات</span>
+          <span className="value">{formatMoney(receivables, unit)}</span>
+        </div>
+        <div className="kpi">
+          <span className="label">بدهی‌ها</span>
+          <span className="value forecast">{formatMoney(payables, unit)}</span>
+        </div>
+        <div className="kpi">
+          <span className="label">خالص</span>
+          <span className="value">{formatMoney(liquidTotal + receivables - payables, unit)}</span>
+          <span className="muted">نقد + طلب − بدهی</span>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <h3>حساب‌ها</h3>
+        </div>
+        <div className="card-body">
+          {rows.length === 0 ? (
+            <p className="muted">هنوز حسابی ندارید. از بخش حساب‌ها شروع کنید.</p>
+          ) : (
+            <ul className="list" style={{ marginBottom: 0 }}>
+              {rows.map(({ account, balance }) => (
+                <li key={account.id}>
+                  <div>
+                    <strong>{account.name}</strong>
+                    <span className="badge">{typeLabel[account.type]}</span>
+                    {(account.type === 'person' || account.type === 'fund') && balance < 0 && (
+                      <span className="badge">بدهی</span>
+                    )}
+                    {(account.type === 'person' || account.type === 'fund') && balance > 0 && (
+                      <span className="badge">طلب</span>
+                    )}
+                  </div>
+                  <span>{formatMoney(balance, unit)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <h3>نقدینگی در بازه</h3>
+        </div>
+        <div className="card-body">
+          <div className="card-form" style={{ boxShadow: 'none', margin: 0, padding: 0, border: 0 }}>
+            <JalaliDateField value={fromISO} onChange={setFromISO} label="از تاریخ" />
+            <JalaliDateField value={toISO} onChange={setToISO} label="تا تاریخ" />
+            <p className="muted">
+              جزئیات بیشتر در <Link to="/liquidity">نقدینگی</Link>.
+            </p>
           </div>
         </div>
       </div>
 
-      <h3>حساب‌ها</h3>
-      {rows.length === 0 ? (
-        <p>هنوز حسابی ندارید. از بخش حساب‌ها شروع کنید.</p>
-      ) : (
-        <ul className="list">
-          {rows.map(({ account, balance }) => (
-            <li key={account.id}>
-              <div>
-                <strong>{account.name}</strong>
-                <span className="badge">{typeLabel[account.type]}</span>
-                {(account.type === 'person' || account.type === 'fund') && balance < 0 && (
-                  <span className="badge">بدهی</span>
-                )}
-                {(account.type === 'person' || account.type === 'fund') && balance > 0 && (
-                  <span className="badge">طلب</span>
-                )}
-              </div>
-              <span>{formatMoney(balance, unit)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h3>نقدینگی در بازه</h3>
-      <div className="card-form">
-        <JalaliDateField value={fromISO} onChange={setFromISO} label="از تاریخ" />
-        <JalaliDateField value={toISO} onChange={setToISO} label="تا تاریخ" />
-        <p className="muted">
-          جزئیات بیشتر در <Link to="/liquidity">نقدینگی</Link>.
-        </p>
+      <div className="card">
+        <div className="card-head">
+          <h3>موجودی نقدی با pending</h3>
+        </div>
+        <div className="card-body">
+          {cashPoints.length === 0 ? (
+            <p className="muted">بازه نامعتبر است.</p>
+          ) : (
+            <div className="chart-wrap" style={{ margin: 0, boxShadow: 'none' }}>
+              <CashProjectionChart points={cashPoints} unit={unit} />
+            </div>
+          )}
+        </div>
       </div>
 
-      <h4>موجودی نقدی با pending</h4>
-      {cashPoints.length === 0 ? (
-        <p className="muted">بازه نامعتبر است.</p>
-      ) : (
-        <CashProjectionChart points={cashPoints} unit={unit} />
-      )}
-
-      <h4>ورودی / خروجی pending</h4>
-      {buckets.length === 0 ? (
-        <p className="muted">قلم pending در این بازه نیست.</p>
-      ) : (
-        <LiquidityChart buckets={buckets} unit={unit} />
-      )}
+      <div className="card">
+        <div className="card-head">
+          <h3>ورودی / خروجی pending</h3>
+        </div>
+        <div className="card-body">
+          {buckets.length === 0 ? (
+            <p className="muted">قلم pending در این بازه نیست.</p>
+          ) : (
+            <div className="chart-wrap" style={{ margin: 0, boxShadow: 'none' }}>
+              <LiquidityChart buckets={buckets} unit={unit} />
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   )
 }

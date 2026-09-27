@@ -26,11 +26,12 @@ export function processAutoDue(
 /** Fields applied when converting a scheduled item into a transaction. */
 export type ConfirmOverrides = {
   accountId?: string
-  categoryId?: string
+  categoryId?: string | null
   amountRial?: number
   direction?: Direction
   dateISO?: string
   note?: string | null
+  counterAccountId?: string | null
 }
 
 export async function confirmItems(
@@ -46,20 +47,62 @@ export async function confirmItems(
         throw new Error('مبلغ باید بزرگ‌تر از صفر باشد')
       }
       const t = nowISO()
-      const txn: Transaction = {
-        id: newId(),
-        accountId: o?.accountId ?? item.accountId,
-        categoryId: o?.categoryId ?? item.categoryId,
-        amountRial: o?.amountRial ?? item.amountRial,
-        direction: o?.direction ?? item.direction,
-        dateISO: o?.dateISO ?? item.dueDateISO,
-        kind: 'scheduled_conversion',
-        note: o?.note !== undefined ? o.note : item.note,
-        scheduledItemId: item.id,
-        createdAt: t,
-        updatedAt: t,
+      const amount = o?.amountRial ?? item.amountRial
+      const dateISO = o?.dateISO ?? item.dueDateISO
+      const note = o?.note !== undefined ? o.note : item.note
+      const fromId = o?.accountId ?? item.accountId
+      const counterId =
+        o?.counterAccountId !== undefined ? o.counterAccountId : (item.counterAccountId ?? null)
+
+      if (counterId) {
+        if (fromId === counterId) throw new Error('حساب مبدأ و مقصد باید متفاوت باشند')
+        const groupId = newId()
+        const out: Transaction = {
+          id: newId(),
+          accountId: fromId,
+          categoryId: null,
+          amountRial: amount,
+          direction: 'out',
+          dateISO,
+          kind: 'transfer',
+          note,
+          scheduledItemId: item.id,
+          transferGroupId: groupId,
+          createdAt: t,
+          updatedAt: t,
+        }
+        const inn: Transaction = {
+          id: newId(),
+          accountId: counterId,
+          categoryId: null,
+          amountRial: amount,
+          direction: 'in',
+          dateISO,
+          kind: 'transfer',
+          note,
+          scheduledItemId: item.id,
+          transferGroupId: groupId,
+          createdAt: t,
+          updatedAt: t,
+        }
+        await db.transactions.bulkAdd([out, inn])
+      } else {
+        const txn: Transaction = {
+          id: newId(),
+          accountId: fromId,
+          categoryId: o?.categoryId !== undefined ? o.categoryId : item.categoryId,
+          amountRial: amount,
+          direction: o?.direction ?? item.direction,
+          dateISO,
+          kind: 'scheduled_conversion',
+          note,
+          scheduledItemId: item.id,
+          transferGroupId: null,
+          createdAt: t,
+          updatedAt: t,
+        }
+        await db.transactions.add(txn)
       }
-      await db.transactions.add(txn)
       await db.scheduledItems.update(id, { status: 'confirmed', updatedAt: t })
     }
   })

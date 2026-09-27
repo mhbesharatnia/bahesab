@@ -46,8 +46,12 @@ export function SettingsPage() {
 
   return (
     <section>
-      <h2>تنظیمات</h2>
+      <div className="page-head">
+        <h2>تنظیمات</h2>
+        <p className="sub">نمایش، همگام‌سازی آروان و پشتیبان</p>
+      </div>
       <div className="card-form">
+        <h3>عمومی</h3>
         <label className="field">
           <span>واحد نمایش</span>
           <select
@@ -70,13 +74,13 @@ export function SettingsPage() {
         </label>
       </div>
 
-      <h3>همگام‌سازی آروان (Object Storage)</h3>
+      <div className="card-form">
+        <h3>همگام‌سازی آروان (Object Storage)</h3>
       <p className="muted">
         یک فایل JSON مشترک روی باکت آروان. دستگاه جدید با Import اتصال، اول داده را از آروان می‌گیرد (دفترچهٔ خالی
         را روی کلود نمی‌نویسد). بعد از وصل شدن، هر تغییر محلی چند ثانیه بعد و هر ۱ دقیقه همگام می‌شود. کلیدها فقط
         روی همین دستگاه می‌مانند.
       </p>
-      <div className="card-form">
         <label className="check">
           <input
             type="checkbox"
@@ -253,7 +257,8 @@ export function SettingsPage() {
         {arvan.dirty && <p className="forecast">تغییرات محلی در صف ارسال به آروان است.</p>}
       </div>
 
-      <h3>پشتیبان‌گیری محلی</h3>
+      <div className="card-form">
+        <h3>پشتیبان‌گیری محلی</h3>
       <div className="row">
         <button
           type="button"
@@ -308,6 +313,7 @@ export function SettingsPage() {
       </div>
       {message && <p className="ok">{message}</p>}
       {error && <p className="error">{error}</p>}
+      </div>
     </section>
   )
 }

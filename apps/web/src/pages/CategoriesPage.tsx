@@ -25,7 +25,10 @@ export function CategoriesPage() {
 
   return (
     <section>
-      <h2>دسته‌ها</h2>
+      <div className="page-head">
+        <h2>دسته‌ها</h2>
+        <p className="sub">دسته‌بندی درآمد و هزینه</p>
+      </div>
       <form
         className="card-form"
         onSubmit={(e) => {
@@ -61,39 +64,46 @@ export function CategoriesPage() {
         </div>
         {error && <p className="error">{error}</p>}
       </form>
-      <ul className="list">
-        {items.map((c) => (
-          <li key={c.id}>
-            <span>
-              {c.name} — {c.kind === 'income' ? 'درآمد' : 'هزینه'}
-            </span>
-            <div className="row">
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => {
-                  setEditId(c.id)
-                  setName(c.name)
-                  setKind(c.kind)
-                }}
-              >
-                ویرایش
-              </button>
-              <button
-                type="button"
-                className="danger"
-                onClick={() =>
-                  void deleteCategory(c.id)
-                    .then(reload)
-                    .catch((err) => setError(err instanceof Error ? err.message : 'خطا'))
-                }
-              >
-                حذف
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+      <div className="card">
+        <div className="card-head">
+          <h3>فهرست دسته‌ها</h3>
+        </div>
+        <div className="card-body">
+          <ul className="list" style={{ marginBottom: 0 }}>
+            {items.map((c) => (
+              <li key={c.id}>
+                <span>
+                  {c.name} — {c.kind === 'income' ? 'درآمد' : 'هزینه'}
+                </span>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="ghost sm"
+                    onClick={() => {
+                      setEditId(c.id)
+                      setName(c.name)
+                      setKind(c.kind)
+                    }}
+                  >
+                    ویرایش
+                  </button>
+                  <button
+                    type="button"
+                    className="danger sm"
+                    onClick={() =>
+                      void deleteCategory(c.id)
+                        .then(reload)
+                        .catch((err) => setError(err instanceof Error ? err.message : 'خطا'))
+                    }
+                  >
+                    حذف
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </section>
   )
 }

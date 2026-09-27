@@ -8,6 +8,7 @@ import type {
   Transaction,
 } from '../lib/types'
 import { resolveTxnOrigin } from './txn-origin'
+import { formatTransferPath } from '../lib/transfer-label'
 
 export type CalendarEventSource = 'transaction' | 'scheduled'
 
@@ -72,10 +73,17 @@ export function buildCalendarEvents(input: {
     // Confirmed items already appear as transactions — skip to avoid double
     if (s.status === 'confirmed') continue
     const ser = s.seriesId ? seriesById.get(s.seriesId) : undefined
-    const typeLabel = ser ? 'سری' : 'تعهد'
+    const isTransfer = Boolean(s.counterAccountId)
+    const typeLabel = isTransfer ? 'انتقال' : ser ? 'سری' : 'تعهد'
     const cat = categoryName(categories, s.categoryId)
     const seriesDetail = ser
       ? `«${ser.name}»${s.seriesIndex != null ? ` — قسط ${s.seriesIndex} از ${ser.count}` : ''}`
+      : null
+    const transferDetail = s.counterAccountId
+      ? formatTransferPath(
+          accountName(accounts, s.accountId),
+          accountName(accounts, s.counterAccountId),
+        )
       : null
     events.push({
       id: `sch-${s.id}`,
@@ -85,7 +93,9 @@ export function buildCalendarEvents(input: {
       source: 'scheduled',
       statusLabel: scheduledStatusLabel[s.status],
       typeLabel,
-      accountName: accountName(accounts, s.accountId),
+      accountName: isTransfer
+        ? transferDetail ?? accountName(accounts, s.accountId)
+        : accountName(accounts, s.accountId),
       detail: [cat, seriesDetail, s.note && s.note !== seriesDetail ? s.note : null]
         .filter(Boolean)
         .join(' · ') || null,

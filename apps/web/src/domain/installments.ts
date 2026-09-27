@@ -3,6 +3,14 @@ import { db } from '../lib/db'
 import { newId, nowISO } from '../lib/id'
 import type { Direction, InstallmentSeries, ScheduledItem } from '../lib/types'
 
+function normalizeSeries(s: InstallmentSeries): InstallmentSeries {
+  return {
+    ...s,
+    counterAccountId: s.counterAccountId ?? null,
+    categoryId: s.categoryId ?? null,
+  }
+}
+
 export function buildInstallmentItems(input: {
   name: string
   startDateISO: string
@@ -10,25 +18,33 @@ export function buildInstallmentItems(input: {
   amountRial: number
   direction: Direction
   accountId: string
-  categoryId: string
+  categoryId: string | null
+  counterAccountId?: string | null
 }): { series: InstallmentSeries; items: ScheduledItem[] } {
   const name = input.name.trim()
   if (!name) throw new Error('نام سری اقساط الزامی است')
   if (input.count < 1 || input.count > 120) throw new Error('تعداد اقساط باید بین ۱ تا ۱۲۰ باشد')
   if (input.amountRial <= 0) throw new Error('مبلغ باید بزرگ‌تر از صفر باشد')
 
+  const counter = input.counterAccountId ?? null
+  if (counter && counter === input.accountId) {
+    throw new Error('حساب مبدأ و مقصد باید متفاوت باشند')
+  }
+
   const t = nowISO()
   const seriesId = newId()
+  const isTransfer = Boolean(counter)
   const series: InstallmentSeries = {
     id: seriesId,
     name,
     accountId: input.accountId,
-    categoryId: input.categoryId,
+    categoryId: isTransfer ? null : input.categoryId,
     amountRial: input.amountRial,
-    direction: input.direction,
+    direction: isTransfer ? 'out' : input.direction,
     startDateISO: input.startDateISO,
     count: input.count,
     interval: 'monthly',
+    counterAccountId: counter,
     createdAt: t,
   }
 
@@ -37,14 +53,15 @@ export function buildInstallmentItems(input: {
     items.push({
       id: newId(),
       accountId: input.accountId,
-      categoryId: input.categoryId,
+      categoryId: series.categoryId,
       amountRial: input.amountRial,
-      direction: input.direction,
+      direction: series.direction,
       dueDateISO: addJalaliMonths(input.startDateISO, i),
       status: 'pending',
       seriesId,
       seriesIndex: i + 1,
       note: `${name} — قسط ${i + 1} از ${input.count}`,
+      counterAccountId: counter,
       createdAt: t,
       updatedAt: t,
     })
@@ -59,8 +76,13 @@ export async function createInstallmentSeries(input: {
   amountRial: number
   direction: Direction
   accountId: string
-  categoryId: string
+  categoryId: string | null
+  counterAccountId?: string | null
 }): Promise<{ series: InstallmentSeries; items: ScheduledItem[] }> {
+  if (input.counterAccountId) {
+    const to = await db.accounts.get(input.counterAccountId)
+    if (!to) throw new Error('حساب مقصد یافت نشد')
+  }
   const built = buildInstallmentItems(input)
   await db.transaction('rw', db.installmentSeries, db.scheduledItems, async () => {
     await db.installmentSeries.add(built.series)
@@ -71,17 +93,18 @@ export async function createInstallmentSeries(input: {
 
 export async function listInstallmentSeries(): Promise<InstallmentSeries[]> {
   const all = await db.installmentSeries.toArray()
-  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return all.map(normalizeSeries).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
 export type SeriesUpdatePatch = {
   name?: string
   amountRial?: number
   accountId?: string
-  categoryId?: string
+  categoryId?: string | null
   direction?: Direction
   startDateISO?: string
   count?: number
+  counterAccountId?: string | null
 }
 
 function noteFor(name: string, index: number, count: number): string {
@@ -94,23 +117,38 @@ function noteFor(name: string, index: number, count: number): string {
  * Increasing count adds new pending items; decreasing removes open items beyond the new count.
  */
 export async function updateInstallmentSeries(id: string, patch: SeriesUpdatePatch): Promise<void> {
-  const series = await db.installmentSeries.get(id)
-  if (!series) throw new Error('سری اقساط یافت نشد')
+  const raw = await db.installmentSeries.get(id)
+  if (!raw) throw new Error('سری اقساط یافت نشد')
+  const series = normalizeSeries(raw)
+
+  const nextCounter =
+    patch.counterAccountId !== undefined ? patch.counterAccountId : series.counterAccountId
+  const nextAccountId = patch.accountId ?? series.accountId
+  if (nextCounter && nextCounter === nextAccountId) {
+    throw new Error('حساب مبدأ و مقصد باید متفاوت باشند')
+  }
+  const isTransfer = Boolean(nextCounter)
 
   const next: InstallmentSeries = {
     ...series,
     name: patch.name !== undefined ? patch.name.trim() : series.name,
     amountRial: patch.amountRial ?? series.amountRial,
-    accountId: patch.accountId ?? series.accountId,
-    categoryId: patch.categoryId ?? series.categoryId,
-    direction: patch.direction ?? series.direction,
+    accountId: nextAccountId,
+    categoryId: isTransfer
+      ? null
+      : patch.categoryId !== undefined
+        ? patch.categoryId
+        : series.categoryId,
+    direction: isTransfer ? 'out' : (patch.direction ?? series.direction),
     startDateISO: patch.startDateISO ?? series.startDateISO,
     count: patch.count ?? series.count,
+    counterAccountId: nextCounter,
   }
 
   if (!next.name) throw new Error('نام سری اقساط الزامی است')
   if (next.count < 1 || next.count > 120) throw new Error('تعداد اقساط باید بین ۱ تا ۱۲۰ باشد')
   if (next.amountRial <= 0) throw new Error('مبلغ باید بزرگ‌تر از صفر باشد')
+  if (!isTransfer && !next.categoryId) throw new Error('دسته الزامی است')
 
   const t = nowISO()
 
@@ -121,7 +159,6 @@ export async function updateInstallmentSeries(id: string, patch: SeriesUpdatePat
     const open = items.filter((s) => s.status === 'pending' || s.status === 'skipped')
     const byIndex = new Map(open.map((s) => [s.seriesIndex ?? 0, s]))
 
-    // Drop open items beyond new count
     for (const item of open) {
       const idx = item.seriesIndex ?? 0
       if (idx > next.count) {
@@ -130,7 +167,6 @@ export async function updateInstallmentSeries(id: string, patch: SeriesUpdatePat
       }
     }
 
-    // Update remaining open items
     for (const item of [...byIndex.values()]) {
       const idx = item.seriesIndex ?? 1
       await db.scheduledItems.update(item.id, {
@@ -140,14 +176,13 @@ export async function updateInstallmentSeries(id: string, patch: SeriesUpdatePat
         direction: next.direction,
         dueDateISO: addJalaliMonths(next.startDateISO, idx - 1),
         note: noteFor(next.name, idx, next.count),
+        counterAccountId: next.counterAccountId,
         updatedAt: t,
       })
     }
 
-    // Add missing indices as pending
     for (let i = 1; i <= next.count; i++) {
       if (byIndex.has(i)) continue
-      // skip if a confirmed item already occupies this index
       const confirmedAtIndex = items.some(
         (s) => s.status === 'confirmed' && s.seriesIndex === i,
       )
@@ -164,6 +199,7 @@ export async function updateInstallmentSeries(id: string, patch: SeriesUpdatePat
         seriesId: id,
         seriesIndex: i,
         note: noteFor(next.name, i, next.count),
+        counterAccountId: next.counterAccountId,
         createdAt: t,
         updatedAt: t,
       }

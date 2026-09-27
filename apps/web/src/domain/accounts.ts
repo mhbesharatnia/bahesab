@@ -46,6 +46,7 @@ export async function createAccount(input: {
     kind: 'opening',
     note: 'تراکنش افتتاحیه',
     scheduledItemId: null,
+    transferGroupId: null,
     createdAt: t,
     updatedAt: t,
   }

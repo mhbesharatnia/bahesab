@@ -10,6 +10,7 @@ const item = (partial: Partial<ScheduledItem> & Pick<ScheduledItem, 'id' | 'dueD
   seriesId: null,
   seriesIndex: null,
   note: null,
+  counterAccountId: null,
   createdAt: '',
   updatedAt: '',
   ...partial,

@@ -57,7 +57,7 @@ export function ReportsPage() {
     let payables = 0 // بدهی as positive magnitude
     let pendingCash = 0
     let pendingRecv = 0
-    let pendingPay = 0
+    let pendingDebtDelta = 0 // + means debt shrinks (e.g. transfer into fund)
 
     for (const a of accounts) {
       const settled = report.settled.get(a.id) ?? 0
@@ -66,12 +66,17 @@ export function ReportsPage() {
         cash += settled
         pendingCash += pend
       } else if (isCounterparty(a)) {
-        if (settled >= 0) receivables += settled
-        else payables += -settled
-        if (pend >= 0) pendingRecv += pend
-        else pendingPay += -pend
+        if (settled >= 0) {
+          receivables += settled
+          pendingRecv += pend
+        } else {
+          payables += -settled
+          pendingDebtDelta += pend // inflow pending reduces debt
+        }
       }
     }
+
+    const payablesAfterPend = Math.max(0, payables - pendingDebtDelta)
 
     return {
       cash,
@@ -79,20 +84,29 @@ export function ReportsPage() {
       payables,
       pendingCash,
       pendingRecv,
-      pendingPay,
+      pendingDebtDelta,
+      payablesAfterPend,
       netWorth: cash + receivables - payables,
       forecastNet:
-        cash +
-        pendingCash +
-        receivables +
-        pendingRecv -
-        (payables + pendingPay),
+        cash + pendingCash + receivables + pendingRecv - payablesAfterPend,
     }
   }, [accounts, report])
 
   const liquidAccounts = accounts.filter(isLiquid)
-  const debtAccounts = accounts.filter((a) => isCounterparty(a) && (report.settled.get(a.id) ?? 0) < 0)
-  const recvAccounts = accounts.filter((a) => isCounterparty(a) && (report.settled.get(a.id) ?? 0) >= 0)
+  const debtAccounts = accounts.filter((a) => {
+    if (!isCounterparty(a)) return false
+    const settled = report.settled.get(a.id) ?? 0
+    const pend = report.pendingEffect.get(a.id) ?? 0
+    const combined = report.mode === 'forecast' ? settled + pend : settled
+    return settled < 0 || combined < 0 || (report.mode === 'forecast' && pend !== 0 && settled <= 0)
+  })
+  const recvAccounts = accounts.filter((a) => {
+    if (!isCounterparty(a)) return false
+    if (debtAccounts.some((d) => d.id === a.id)) return false
+    const settled = report.settled.get(a.id) ?? 0
+    const pend = report.pendingEffect.get(a.id) ?? 0
+    return settled > 0 || settled === 0 || (report.mode === 'forecast' && pend !== 0)
+  })
 
   function renderAccountList(list: Account[], showAsDebtMagnitude = false) {
     if (list.length === 0) return <p className="muted">موردی نیست.</p>
@@ -124,16 +138,22 @@ export function ReportsPage() {
 
   return (
     <section>
-      <h2>ترازنامه / وضعیت</h2>
-      <JalaliDateField value={reportDate} onChange={setReportDate} label="تاریخ گزارش شمسی" />
-      <p>
-        حالت:{' '}
-        <strong>{report.mode === 'settled' ? 'قطعی (فقط تراکنش‌های واقعی)' : 'پیش‌بینی (قطعی + pending)'}</strong>
-      </p>
-      <p className="muted">امروز سیستم: {toJalaliDisplay(todayISO())}</p>
-      <p className="muted">
-        بدهی صندوق/اشخاص (حتی اگر هنوز پرداخت نشده) جزو موجودی نقد نیست؛ جدا دیده می‌شود.
-      </p>
+      <div className="page-head">
+        <h2>ترازنامه / وضعیت</h2>
+        <p className="sub">وضعیت حساب‌ها در تاریخ انتخابی</p>
+      </div>
+      <div className="card-form">
+        <JalaliDateField value={reportDate} onChange={setReportDate} label="تاریخ گزارش شمسی" />
+        <p>
+          حالت:{' '}
+          <strong>{report.mode === 'settled' ? 'قطعی (فقط تراکنش‌های واقعی)' : 'پیش‌بینی (قطعی + pending)'}</strong>
+        </p>
+        <p className="muted">امروز سیستم: {toJalaliDisplay(todayISO())}</p>
+        <p className="muted">
+          بدهی صندوق/اشخاص جدا از نقد است. برای دیدن اثر انتقال‌های pending، تاریخ گزارش را به آینده ببر
+          (حالت پیش‌بینی).
+        </p>
+      </div>
 
       <div className="totals-card">
         <h3>خلاصهٔ جدا</h3>
@@ -141,14 +161,29 @@ export function ReportsPage() {
           <div>
             <span className="muted">۱) موجودی نقدی (بانک/نقد)</span>
             <strong className="total-value">{formatMoney(totals.cash, unit)}</strong>
+            {report.mode === 'forecast' && totals.pendingCash !== 0 && (
+              <div className="forecast">
+                اثر pending نقد: {formatMoney(totals.pendingCash, unit)} →{' '}
+                {formatMoney(totals.cash + totals.pendingCash, unit)}
+              </div>
+            )}
           </div>
           <div>
             <span className="muted">۲) مطالبات (طلب از دیگران)</span>
             <strong>{formatMoney(totals.receivables, unit)}</strong>
+            {report.mode === 'forecast' && totals.pendingRecv !== 0 && (
+              <div className="forecast">اثر pending طلب: {formatMoney(totals.pendingRecv, unit)}</div>
+            )}
           </div>
           <div>
             <span className="muted">۳) بدهی‌ها (به صندوق/اشخاص)</span>
             <strong className="forecast">{formatMoney(totals.payables, unit)}</strong>
+            {report.mode === 'forecast' && totals.pendingDebtDelta !== 0 && (
+              <div className="forecast">
+                اثر pending بدهی: {formatMoney(totals.pendingDebtDelta, unit)} → بدهی تقریبی{' '}
+                {formatMoney(totals.payablesAfterPend, unit)}
+              </div>
+            )}
           </div>
           <div className="totals-grand">
             <span className="muted">خالص وضعیت = نقد + طلب − بدهی</span>

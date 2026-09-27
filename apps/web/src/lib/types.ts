@@ -1,7 +1,7 @@
 export type AccountType = 'cash' | 'bank' | 'person' | 'fund'
 export type CategoryKind = 'income' | 'expense'
 export type Direction = 'in' | 'out'
-export type TxnKind = 'opening' | 'normal' | 'scheduled_conversion'
+export type TxnKind = 'opening' | 'normal' | 'scheduled_conversion' | 'transfer'
 export type ScheduledStatus = 'pending' | 'confirmed' | 'skipped'
 export type DisplayUnit = 'rial' | 'toman'
 export type DueMode = 'confirm' | 'auto'
@@ -35,6 +35,8 @@ export interface Transaction {
   kind: TxnKind
   note: string | null
   scheduledItemId: string | null
+  /** Links the out+in pair of a transfer; null for non-transfers */
+  transferGroupId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -42,7 +44,7 @@ export interface Transaction {
 export interface ScheduledItem {
   id: string
   accountId: string
-  categoryId: string
+  categoryId: string | null
   amountRial: number
   direction: Direction
   dueDateISO: string
@@ -50,6 +52,11 @@ export interface ScheduledItem {
   seriesId: string | null
   seriesIndex: number | null
   note: string | null
+  /**
+   * When set, confirm creates a transfer: out from accountId, in to counterAccountId.
+   * Liquidity uses only the liquid leg(s).
+   */
+  counterAccountId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -58,12 +65,14 @@ export interface InstallmentSeries {
   id: string
   name: string
   accountId: string
-  categoryId: string
+  categoryId: string | null
   amountRial: number
   direction: Direction
   startDateISO: string
   count: number
   interval: 'monthly'
+  /** Destination account for installment transfers; null = single-account series */
+  counterAccountId: string | null
   createdAt: string
 }
 

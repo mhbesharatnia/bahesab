@@ -18,6 +18,13 @@ export function resolveTxnOrigin(
   if (txn.kind === 'opening') {
     return { kind: 'opening', badge: 'افتتاحیه', detail: null }
   }
+  if (txn.kind === 'transfer') {
+    return {
+      kind: txn.scheduledItemId ? 'series' : 'manual',
+      badge: 'انتقال',
+      detail: null,
+    }
+  }
   if (txn.kind === 'normal' || !txn.scheduledItemId) {
     return { kind: 'manual', badge: 'دستی', detail: null }
   }
