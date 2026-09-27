@@ -99,6 +99,8 @@ export function TransactionsPage() {
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<CategoryMultiFilterState>(() => new Set())
   const [formMode, setFormMode] = useState<'normal' | 'transfer'>('normal')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editKind, setEditKind] = useState<Transaction['kind'] | null>(null)
   const [fromISO, setFromISO] = useState(() => startOfJalaliMonthISO(today))
   const [toISO, setToISO] = useState(() => endOfJalaliMonthISO(today))
 
@@ -363,6 +365,36 @@ export function TransactionsPage() {
       : formatTransferPath(accountById.get(mate.accountId)?.name ?? '؟', acc?.name ?? '؟')
   }
 
+  function resetRegisterForm() {
+    setEditId(null)
+    setEditKind(null)
+    setFormMode('normal')
+    setAmount(0)
+    setNote('')
+    setDirection('out')
+    setDateISO(todayISO())
+  }
+
+  function startEdit(t: Transaction) {
+    setError(null)
+    if (t.kind === 'transfer') {
+      setError('ویرایش انتقال مجاز نیست؛ حذف و دوباره ثبت کنید')
+      return
+    }
+    setEditId(t.id)
+    setEditKind(t.kind)
+    setFormMode('normal')
+    setAccountId(t.accountId)
+    setCategoryId(t.categoryId ?? formCategories[0]?.id ?? '')
+    setAmount(t.amountRial)
+    setDirection(t.direction)
+    setDateISO(t.dateISO)
+    setNote(t.note ?? '')
+    setPageTab('register')
+  }
+
+  const isEditingOpening = editKind === 'opening'
+
   function renderTxnTable(list: TxnRow[], emptyText: string, title: string) {
     return (
       <div className="card">
@@ -415,37 +447,32 @@ export function TransactionsPage() {
                           {noteText}
                         </td>
                         <td data-label="عملیات" className="cell-actions">
-                          {t.kind === 'opening' ? (
-                            <button
-                              type="button"
-                              className="ghost sm"
-                              onClick={() => {
-                                const next = prompt('مبلغ ریال جدید', String(t.amountRial))
-                                if (next == null) return
-                                void updateTransaction(t.id, { amountRial: Number(next) })
-                                  .then(reload)
-                                  .catch((err) =>
-                                    setError(err instanceof Error ? err.message : 'خطا'),
-                                  )
-                              }}
-                            >
-                              ویرایش
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="danger sm"
-                              onClick={() =>
-                                void deleteTransaction(t.id)
-                                  .then(reload)
-                                  .catch((err) =>
-                                    setError(err instanceof Error ? err.message : 'خطا'),
-                                  )
-                              }
-                            >
-                              حذف
-                            </button>
-                          )}
+                          <div className="row" style={{ justifyContent: 'flex-end', gap: '0.25rem' }}>
+                            {t.kind !== 'transfer' && (
+                              <button
+                                type="button"
+                                className="ghost sm"
+                                onClick={() => startEdit(t)}
+                              >
+                                ویرایش
+                              </button>
+                            )}
+                            {t.kind !== 'opening' && (
+                              <button
+                                type="button"
+                                className="danger sm"
+                                onClick={() =>
+                                  void deleteTransaction(t.id)
+                                    .then(reload)
+                                    .catch((err) =>
+                                      setError(err instanceof Error ? err.message : 'خطا'),
+                                    )
+                                }
+                              >
+                                حذف
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -550,9 +577,12 @@ export function TransactionsPage() {
           role="tab"
           aria-selected={pageTab === 'register'}
           className={pageTab === 'register' ? 'page-tab active' : 'page-tab'}
-          onClick={() => setPageTab('register')}
+          onClick={() => {
+            if (editId) resetRegisterForm()
+            setPageTab('register')
+          }}
         >
-          ثبت تراکنش
+          {editId ? 'ویرایش تراکنش' : 'ثبت تراکنش'}
         </button>
       </div>
 
@@ -562,6 +592,26 @@ export function TransactionsPage() {
           onSubmit={(e) => {
             e.preventDefault()
             setError(null)
+            if (editId) {
+              const patch: Parameters<typeof updateTransaction>[1] = {
+                amountRial: amount,
+                dateISO,
+                note: note || null,
+              }
+              if (!isEditingOpening) {
+                patch.accountId = accountId
+                patch.categoryId = categoryId || null
+                patch.direction = direction
+              }
+              void updateTransaction(editId, patch)
+                .then(() => {
+                  resetRegisterForm()
+                  return reload()
+                })
+                .then(() => setPageTab('browse'))
+                .catch((err) => setError(err instanceof Error ? err.message : 'خطا'))
+              return
+            }
             if (formMode === 'transfer') {
               void createTransfer({
                 fromAccountId: accountId,
@@ -571,8 +621,7 @@ export function TransactionsPage() {
                 note: note || null,
               })
                 .then(() => {
-                  setAmount(0)
-                  setNote('')
+                  resetRegisterForm()
                   return reload()
                 })
                 .then(() => setPageTab('browse'))
@@ -588,25 +637,30 @@ export function TransactionsPage() {
               note: note || null,
             })
               .then(() => {
-                setAmount(0)
-                setNote('')
+                resetRegisterForm()
                 return reload()
               })
               .then(() => setPageTab('browse'))
               .catch((err) => setError(err instanceof Error ? err.message : 'خطا'))
           }}
         >
-          <label className="field">
-            <span>نوع ثبت</span>
-            <select
-              value={formMode}
-              onChange={(e) => setFormMode(e.target.value as 'normal' | 'transfer')}
-            >
-              <option value="normal">درآمد / هزینه</option>
-              <option value="transfer">انتقال بین حساب‌ها</option>
-            </select>
-          </label>
-          {formMode === 'transfer' ? (
+          <h3>{editId ? 'ویرایش تراکنش' : 'ثبت تراکنش'}</h3>
+          {!editId && (
+            <label className="field">
+              <span>نوع ثبت</span>
+              <select
+                value={formMode}
+                onChange={(e) => setFormMode(e.target.value as 'normal' | 'transfer')}
+              >
+                <option value="normal">درآمد / هزینه</option>
+                <option value="transfer">انتقال بین حساب‌ها</option>
+              </select>
+            </label>
+          )}
+          {isEditingOpening && (
+            <p className="muted">افتتاحیه: فقط مبلغ، تاریخ و توضیح قابل تغییر است.</p>
+          )}
+          {!editId && formMode === 'transfer' ? (
             <>
               <label className="field">
                 <span>از حساب</span>
@@ -635,40 +689,48 @@ export function TransactionsPage() {
             </>
           ) : (
             <>
-              <label className="field">
-                <span>حساب</span>
-                <select value={accountId} onChange={(e) => setAccountId(e.target.value)} required>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>دسته</span>
-                <select
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                  required
-                >
-                  {formCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>جهت</span>
-                <select
-                  value={direction}
-                  onChange={(e) => setDirection(e.target.value as Direction)}
-                >
-                  <option value="out">خروجی</option>
-                  <option value="in">ورودی</option>
-                </select>
-              </label>
+              {!isEditingOpening && (
+                <>
+                  <label className="field">
+                    <span>حساب</span>
+                    <select
+                      value={accountId}
+                      onChange={(e) => setAccountId(e.target.value)}
+                      required
+                    >
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>دسته</span>
+                    <select
+                      value={categoryId}
+                      onChange={(e) => setCategoryId(e.target.value)}
+                      required
+                    >
+                      {formCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>جهت</span>
+                    <select
+                      value={direction}
+                      onChange={(e) => setDirection(e.target.value as Direction)}
+                    >
+                      <option value="out">خروجی</option>
+                      <option value="in">ورودی</option>
+                    </select>
+                  </label>
+                </>
+              )}
             </>
           )}
           <MoneyField amountRial={amount} unit={unit} onChangeRial={setAmount} />
@@ -678,10 +740,32 @@ export function TransactionsPage() {
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder={formMode === 'transfer' ? 'مثلاً واریز به صندوق' : 'مثلاً خرید هفتگی'}
+              placeholder={
+                !editId && formMode === 'transfer' ? 'مثلاً واریز به صندوق' : 'مثلاً خرید هفتگی'
+              }
             />
           </label>
-          <button type="submit">{formMode === 'transfer' ? 'ثبت انتقال' : 'ثبت تراکنش'}</button>
+          <div className="row">
+            <button type="submit">
+              {editId
+                ? 'ذخیره تغییرات'
+                : formMode === 'transfer'
+                  ? 'ثبت انتقال'
+                  : 'ثبت تراکنش'}
+            </button>
+            {editId && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  resetRegisterForm()
+                  setPageTab('browse')
+                }}
+              >
+                انصراف
+              </button>
+            )}
+          </div>
           {error && <p className="error">{error}</p>}
         </form>
       )}

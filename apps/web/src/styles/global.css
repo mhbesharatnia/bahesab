@@ -648,6 +648,11 @@ button.icon,
   border-inline-start: 3px solid var(--out);
 }
 
+.list li.list-item-selected {
+  border-color: var(--pri);
+  box-shadow: 0 0 0 1px var(--pri);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
